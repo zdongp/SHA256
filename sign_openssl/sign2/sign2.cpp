@@ -1,7 +1,7 @@
 // PKCS7Sign.cpp : Defines the entry point for the console application.
 
 
-#include <iostream>    
+// #include <iostream>    
 #include <openssl/md5.h>  
  
 #include <stdio.h>
@@ -14,6 +14,7 @@
 #include <openssl/pkcs12.h> 
 #include <openssl/ssl.h>
  
+#include "stream.cpp"
 // #pragma comment(lib, "libeay32.lib")   
 // #pragma comment(lib, "ssleay32.lib")   
 #define BLOCKSIZE 32768
@@ -184,23 +185,25 @@ char* cipherText 签名
 bool true  签名验证成功
 bool false 验证失败
 */
-bool PKCS7_VerifySign(char*certFile,char* plainText,char* cipherText )
+bool PKCS7_VerifySign(char* certFile,char* plainText,char* cipherText )
 {
 	/* Get X509 */
-	FILE* fp = fopen (certFile, "r");
+	FILE* fp = fopen(certFile, "r");
 	if (fp == NULL) 
 		return false;
+
 	X509* x509 = PEM_read_X509(fp, NULL, NULL, NULL);
-	fclose (fp);
- 
+
+	fclose(fp);
 	if (x509 == NULL) 
 	{
 		ERR_print_errors_fp (stderr);
 		return false;
 	}
- 
+
+
 	//BASE64解码
-	unsigned char *retBuf[1024*8];
+	unsigned char *retBuf[1024*18];
 	int retBufLen = sizeof(retBuf);
 	memset(retBuf,0,sizeof(retBuf));
 	decodeBase64(cipherText,(void *)retBuf,&retBufLen);
@@ -229,17 +232,146 @@ bool PKCS7_VerifySign(char*certFile,char* plainText,char* cipherText )
  
 	return true;
 }
- 
+
+//判断字符串是否全为数字：1是，0否
+int isDigitStr(char const *str)
+{
+	return (strspn(str, "0123456789")==strlen(str));
+}
+
+//文件自适应,签名
+void fileAdaptatSign(int argc, char const *argv[], char *plainFile, char *pfxFile, char *pwd)
+{
+	int i = 1;
+	char PFX[] = "pfx";
+
+	for(; i<argc; i++)
+	{
+		if(strstr((const char *)argv[i], PFX))
+			strcpy(pfxFile, argv[i]);
+		else if(isDigitStr(argv[i]))
+			strcpy(pwd, argv[i]);
+		else
+			strcpy(plainFile, argv[i]);
+	}
+	return;
+}
+
+//文件自适应,验证签名
+void fileAdaptVerify(int argc, char const *argv[], char *plainFile, char *certFile, char *cipherFile)
+{
+	int i = 1;
+	char CER[] = "cer";
+	char JKS[] = "jks";
+
+	for(; i<argc; i++)
+	{
+		if(strstr((const char *)argv[i], CER))
+			strcpy(certFile, argv[i]);
+		else if(strstr((const char *)argv[i], JKS))
+			strcpy(cipherFile, argv[i]);
+		else
+			strcpy(plainFile, argv[i]);
+	}
+	return;
+}
+
+//生成签名文件.jks
+void createCipherText(int argc, char const *argv[])
+{
+	char plainFile[256], pfxFile[256], pwd[256];
+	char *cipher = (char *)"cipher.jks";
+	
+	fileAdaptatSign(argc, argv, plainFile, pfxFile, pwd);
+
+	InitOpenSSL();
+
+	char *plainText = readFile(plainFile);
+	char *cipherText = PKCS7_GetSign(pfxFile,pwd,plainText,PKCS7_DETACHED|PKCS7_NOSMIMECAP);
+	int  cipherLen = strlen(cipherText);
+
+	FILE *fp = fopen(cipher, "wb+");
+	if(fp==NULL)
+	{
+		printf("cipher.jks fopen Failed\n");
+		return;
+	}
+	size_t ret = fwrite(cipherText, 1, cipherLen, fp);
+	if (ret!=cipherLen)
+	{
+		ret = remove(cipher);
+		if(ret)
+			perror("remove");
+		printf("createCipherText Failed\n");
+	}
+	free(plainText);
+	return;
+}
+
+//验证签名文件
+void PKCS7_VerifySignFile(int argc, char const *argv[])
+{
+	char certFile[256], plainFile[256], cipherFile[256];
+
+	InitOpenSSL();
+	fileAdaptVerify(argc, argv, plainFile, certFile, cipherFile);
+	// printf("cerFile:%s\n", certFile);
+	// printf("plainFile:%s\n", plainFile);
+	// printf("cipherFile:%s\n", cipherFile);
+
+	char* plainText = readFile(plainFile);
+	char* cipherText = readFile(cipherFile);
+
+	//验证数字签名
+	if(PKCS7_VerifySign(certFile,plainText,cipherText))
+		printf("Verify OK!\n");
+	else
+		printf("Verify Failed!\n");
+
+	free(plainText);
+	free(cipherText);
+	return;
+}
+
+
+int main(int argc, char const *argv[])
+{
+	
+
+	// pathAdaptation(argc, argv, plainFile, pfxFile, pwd);
+	// printf("plainFile:%s\n", plainFile);
+	// printf("pfxFile:%s\n", pfxFile);
+	// printf("pwd:%s\n", pwd);
+
+	// printf("argc=%d\n", argc);
+	// printf("%s %s %s\n", argv[1], argv[2], argv[3]);
+	//createCipherText((char *)argv[1], (char *)argv[2], (char *)argv[3]);
+	createCipherText(argc, argv);
+	//PKCS7_VerifySignFile(argc, argv);
+	return 0;
+}
+
+
+/*
 int main(int argc, char* argv[])
 {
 	char pfxFile[] = "openssl.pfx";
 	char cerFile[] = "openssl.cer";
 	char pwd[] = "123";
 
-	char plainText[]= "Hello,World!";
+	char *plainText = NULL;
  	
 	InitOpenSSL();
  
+	plainText = readFile(argv[1]);
+
+	int i=0;
+	while(i<sizeFile)
+		printf("%x", plainText[i++]);
+
+	printf("\nsize=%d strlen=%d\n", (int)sizeFile, (int)strlen(plainText));
+	// free(buf);
+
 	//数字签名
 	//PKCS7_NOCHAIN:签名中不包含证书链
 	//PKCS7_NOSMIMECAP:签名不需要支持SMIME
@@ -248,6 +380,8 @@ int main(int argc, char* argv[])
 	//打印出BASE64编码后的签名
 	std::cout<<cipherText<<std::endl;
  
+ 	char *test_plainText = (char*)"openssl test";
+
 	//验证数字签名
 	if(PKCS7_VerifySign(cerFile,plainText,cipherText))
 		std::cout<<"Verify OK!"<<std::endl;
@@ -256,11 +390,11 @@ int main(int argc, char* argv[])
 	
 	//释放签名字符串（缓存）
 	free(cipherText);
- 
+ 	free(plainText);
+
 	return 0;
 }
  
-
-
+*/
 
 

@@ -6,7 +6,7 @@
 #include <string.h>
 
 
-char* readFile(char const *filePath, size_t *sizeFile)
+char* readFile(char const *filePath)
 {
   struct stat statFile;
   size_t size, n;
@@ -14,11 +14,10 @@ char* readFile(char const *filePath, size_t *sizeFile)
 
   stat(file, &statFile);
   size = statFile.st_size;
-  printf("size=%d\n", (int)size);
 
   FILE *stream = fopen(file, "rb");
 
-  static char *buffer = (char *)malloc(size);
+  char *buffer = (char *)malloc(size);
   if(!buffer)
     return NULL;
 
@@ -42,10 +41,9 @@ char* readFile(char const *filePath, size_t *sizeFile)
 
   dap:;
 
-  *sizeFile = size;
   return buffer;
 }
-
+/*
 int main(int argc, char const *argv[])
 {
   size_t sizeFile;
@@ -59,3 +57,4 @@ int main(int argc, char const *argv[])
   free(buf);
   return 0;
 }
+*/
